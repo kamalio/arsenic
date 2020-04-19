@@ -1,10 +1,11 @@
 # Download data
 year <-'2015-2016'
-data_names<-c('UASS_I', 'TRICH_I','CHLMDA_I','DEMO_I','DIQ_I','HIV_I','ALQ_I')
+data_names<-c('UTASS_I','UASS_I', 'TRICH_I','CHLMDA_I','DEMO_I','DIQ_I','HIV_I','ALQ_I')
 system(paste(paste('wget https://wwwn.cdc.gov/Nchs/Nhanes/',year,'/',data_names,'.XPT ',sep=''),collapse  = ' \ '))
 
 # Read all data
 library(SASxport)
+UTAS<-read.xport('./UTASS_I.XPT')
 UASS<-read.xport('./data/UASS_I.XPT')
 TRICH<-read.xport('./data/TRICH_I.XPT')
 CHLMDA<-read.xport('./data/CHLMDA_I.XPT')
@@ -21,11 +22,16 @@ write.csv(DIQ,'./data/DIQ.csv',row.names = F)
 write.csv(HIV,'./data/HIV.csv',row.names = F)
 write.csv(ALQ,'./data/ALQ.csv',row.names = F)
 
-dat<-merge(UASS[,- grep('LC',names(UASS))],CHLMDA)
-dat<-merge(dat,TRICH)
-dat<-merge(dat,DEMO[,c('SEQN','RIAGENDR','RIDAGEYR','RIDRETH1','RIDRETH3','DMQADFC','DMDBORN4','DMDYRSUS','DMDEDUC2','DMDEDUC3','INDHHIN2', 'INDFMPIR')])
+
+dat<-merge(UASS[,- grep('LC',names(UASS))],DEMO[,c('SEQN','RIAGENDR','RIDAGEYR','RIDRETH1','RIDRETH3','DMQADFC','DMDBORN4','DMDYRSUS','DMDEDUC2','DMDEDUC3','INDHHIN2', 'INDFMPIR')])
 dat<-merge(dat,DIQ[,c('SEQN','DIQ010')])
 dat<-merge(dat,HIV[,c('SEQN','LBXHIVC')])
 dat<-merge(dat,ALQ[,c('SEQN','ALQ101')])
 
+dat_tri<-merge(dat,TRICH)
+dat_chl<-merge(dat,CHLMDA)
 write.csv(dat,'./data/combined_data.csv',row.names = F)
+
+dat_tot_chl<-merge(UTAS[,c(1,3)],CHLMDA)
+
+
