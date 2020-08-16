@@ -43,5 +43,6 @@
 * LBXHIVC - HIV-1, 2 Combo Test
 * ALQ101 - Had at least 12 alcohol drinks/1 yr?
 
-c("SEQN", "Smoking_2years", "Arsenous", "Arsenic", "Arsenobetaine", "Arsenocholine", "Dimethylarsinic", "Monomethylarsonic", "URXUTRI", "Gender", "Age", "Race1", "Race3", "Country_Birth", "Education", "Income", "Income_over_proverty", "Diabetes",   "HIV",  "ALC")
+### Analysis Results
 
+Logistic regression is performed. The results on the analysis can be found in the `combined_analysis_notes`. 
