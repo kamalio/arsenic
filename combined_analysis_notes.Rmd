@@ -2,7 +2,11 @@
 title: "Data Download and Cleaning"
 author: "Subrata Paul"
 date: "6/27/2020"
-output: html_document
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
 ---
 ### Function to download the data directly fro website. 
 It creates a directory by year and saves the data within the directory. 
@@ -31,6 +35,7 @@ download_data('2005-2006', 'D')
 
 
 ```{r}
+library(xtable)
 create_result<-function(lmod){
   lmod$coefficients
   out<-data.frame(Coef = lmod$coefficients)
@@ -138,7 +143,7 @@ get_summary = function(x){
       return(summary(x))
     }
   }
-  if(class(x)=='factor') return(table(x, useNA = 'ifany'))
+  if(class(x)=='factor') return(prop.table(table(x, useNA = 'ifany'))*100)
 }
 
 sapply(covar$ALL, get_summary)
@@ -195,7 +200,7 @@ get_chlmda_data= function(year, ext){
   setwd(paste0('/Users/spaul/Documents/Arsenic/arsenic/data/',year))
   chlmda = read.xport(paste0('CHLMDA_',ext,'.XPT'))
   chlmda = chlmda[,c("SEQN", "URXUCL")]
-  chlmda$URXUCL = as.factor(chlmda$URXUCL - 1 )
+  chlmda$URXUCL = as.factor(chlmda$URXUCL%%2)
   return(chlmda)
 }
 
@@ -215,7 +220,42 @@ chlmda$ALL = rbind(chlmda$Y2015, chlmda$Y2013, chlmda$Y2011 , chlmda$Y2009, chlm
 reg_data = merge(chlmda$ALL, arsenic$ALL)
 reg_data = merge(reg_data, covar$ALL)
 ```
+
 # Analysis on Chlamydia
+
+
+## Demographic variables
+
+```{r results='asis'}
+get_summary_prop<-function(x, var_name){
+  flag = data.frame(rbind(prop.table(table(reg_data$URXUCL, reg_data[,x]))*100), row.names = c('controls','cases'))
+  flag = as.data.frame(t(flag))
+  flag$Total = rowSums(flag)
+  flag = flag[,c('Total','cases','controls')]
+  rownames(flag) = gsub('X',var_name, rownames(flag))
+  return(flag)
+}
+
+demo_info = rbind(
+# Gender
+get_summary_prop('RIAGENDR','Sex'),
+# Age
+get_summary_prop('RIDAGEYR', 'Age'),
+#Race
+get_summary_prop('RIDRETH1','Race'),
+# Country of birth
+get_summary_prop('DMDBORN','Birth_Co'),
+# Education
+get_summary_prop('DMDEDUC2','EDU'),
+# Income to poverty ratio
+get_summary_prop('INDFMPIR','PIR'),
+# Alcohol
+get_summary_prop('ALQ101','ALQ'),
+# BMI
+get_summary_prop('BMI','BMI'))
+print(xtable(demo_info, align = "lccc"), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
 ## Speciated arsenic model
 
 ```{r, results='asis'}
@@ -224,7 +264,7 @@ lmod_esp = glm(URXUCL ~ WTFSM + URXUAS3 + URXUAS5 + URXUAB + URXUAC + URXUDMA + 
 print(xtable(summary(lmod_esp), align = "lcccc"), type = 'html', 
       html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
 ```
-#### Results with OR and 95% confidence interval
+### Results with OR and 95% confidence interval
 
 ```{r, results='asis', message=F, warning=F}
 print(xtable(create_result(lmod_esp), align = 'lccccc'), type = 'html', 
@@ -241,7 +281,7 @@ print(xtable(summary(lmod_total), align = "lcccc"), type = 'html',
 ```
 
 
-#### Results with OR and 95% confidence interval
+### Results with OR and 95% confidence interval
 
 ```{r, results='asis', message=F}
 print(xtable(create_result(lmod_total), align = 'lccccc'), type = 'html', 
@@ -256,7 +296,7 @@ print(xtable(summary(lmod_tuc1), align = "lcccc"), type = 'html',
       html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
 ```
 
-#### Results with OR and 95% confidence interval
+### Results with OR and 95% confidence interval
 
 ```{r, results='asis', message=F}
 print(xtable(create_result(lmod_tuc1), align = 'lccccc'), type = 'html', 
@@ -271,7 +311,7 @@ lmod_tuc2 = glm(URXUCL ~ WTFSM + TUC2 + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBORN
 print(xtable(summary(lmod_tuc2), align = "lcccc"), type = 'html', 
       html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
 ```
-#### Results with OR and 95% confidence interval
+### Results with OR and 95% confidence interval
 
 ```{r, results='asis', message=F}
 print(xtable(create_result(lmod_tuc2), align = 'lccccc'), type = 'html', 
@@ -279,7 +319,7 @@ print(xtable(create_result(lmod_tuc2), align = 'lccccc'), type = 'html',
 ```
 
 
-## Prepare Dependent variables
+#### Prepare Dependent variables
 
 ```{r, message=F, warning=F}
 get_trich_data= function(year, ext){
@@ -304,6 +344,38 @@ reg_data = merge(reg_data, covar$ALL)
 ```
 
 # Analysis on Trichomonas
+
+## Demographic Variables
+```{r results='asis'}
+get_summary_prop<-function(x, var_name){
+  flag = data.frame(rbind(prop.table(table(reg_data$URXUTRI, reg_data[,x]))*100), row.names = c('controls','cases'))
+  flag = as.data.frame(t(flag))
+  flag$Total = rowSums(flag)
+  flag = flag[,c('Total','cases','controls')]
+  rownames(flag) = gsub('X',var_name, rownames(flag))
+  return(flag)
+}
+demo_info = rbind(
+# Gender
+get_summary_prop('RIAGENDR','Sex'),
+# Age
+get_summary_prop('RIDAGEYR', 'Age'),
+#Race
+get_summary_prop('RIDRETH1','Race'),
+# Country of birth
+get_summary_prop('DMDBORN','Birth_Co'),
+# Education
+get_summary_prop('DMDEDUC2','EDU'),
+# Income to poverty ratio
+get_summary_prop('INDFMPIR','PIR'),
+# Alcohol
+get_summary_prop('ALQ101','ALQ'),
+# BMI
+get_summary_prop('BMI','BMI'))
+print(xtable(demo_info, align = "lccc"), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
 ## Speciated arsenic model
 
 ```{r, results='asis'}
@@ -312,7 +384,7 @@ print(xtable(summary(lmod_esp), align = "lcccc"), type = 'html',
       html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
 ```
 
-#### Results with OR and 95% confidence interval
+### Results with OR and 95% confidence interval
 
 ```{r, results='asis', message=F, warning=F}
 print(xtable(create_result(lmod_esp), align = 'lccccc'), type = 'html', 
@@ -327,7 +399,7 @@ print(xtable(summary(lmod_total), align = "lcccc"), type = 'html',
       html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
 ```
 
-#### Results with OR and 95% confidence interval
+### Results with OR and 95% confidence interval
 
 ```{r, results='asis', message=F, warning=F}
 print(xtable(create_result(lmod_total), align = 'lccccc'), type = 'html', 
@@ -343,7 +415,7 @@ lmod_tuc1 = glm(URXUTRI ~ WTFSM + TUC1 + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBOR
 print(xtable(summary(lmod_tuc1), align = "lcccc"), type = 'html', 
       html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
 ```
-#### Results with OR and 95% confidence interval
+### Results with OR and 95% confidence interval
 
 ```{r, results='asis', message=F, warning=F}
 print(xtable(create_result(lmod_tuc1), align = 'lccccc'), type = 'html', 
@@ -358,7 +430,7 @@ print(xtable(summary(lmod_tuc2), align = "lcccc"), type = 'html',
       html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
 ```
 
-#### Results with OR and 95% confidence interval
+### Results with OR and 95% confidence interval
 
 ```{r, results='asis', message=F, warning=F}
 print(xtable(create_result(lmod_tuc2), align = 'lccccc'), type = 'html', 

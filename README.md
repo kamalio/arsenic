@@ -43,6 +43,41 @@
 * LBXHIVC - HIV-1, 2 Combo Test
 * ALQ101 - Had at least 12 alcohol drinks/1 yr?
 
+### Categorical demographic variable keys
+
+#### Age in Year 
+
+| Age | Label|
+|---|---|
+| 0 to 20 | 1 |
+| 20 to 40 | 2|
+| 40 to 65 | 3|
+|65 and up | 4|
+
+#### Income to Poverty ratio
+
+|PIR |Label|
+|---|---|
+|0 to 1.3 | 1|
+|1.3 to 3.5 | 2|
+|3.5 and up| 3|
+
+#### BMI
+
+| BMI |Label |
+|---|---|
+|0 to 18.5| 1|
+|18.5 to 24.9 | 2|
+|24.9 to 29.9 | 3|
+|29.9 and up |4 |
+
+#### Other
+The other variables are labeled similarly as described on data source other than race and education. For education the second (9-11 grade) and third (high school) labels are merged toether. For race, Maxican American and Other Hispanic are grouped together as Hispanic. 
+
+### 
+covar$INDFMPIR = cut(covar$INDFMPIR, breaks = c(0,1.3, 3.5,Inf), labels = c(1,2,3))
+  covar$RIDAGEYR = cut(covar$RIDAGEYR, breaks = c(0, 20, 40, 65, Inf), labels = c(1,2,3,4))
+
 ### Analysis Results
 
 Logistic regression is performed. The results on the analysis can be found in the `combined_analysis_notes`. 
