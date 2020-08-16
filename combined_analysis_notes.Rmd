@@ -1,0 +1,363 @@
+---
+title: "Data Download and Cleaning"
+author: "Subrata Paul"
+date: "6/27/2020"
+output: html_document
+---
+### Function to download the data directly fro website. 
+It creates a directory by year and saves the data within the directory. 
+```{r eval=F}
+download_data = function(year, ext){
+  data_names<-paste(c('UTAS','UAS','UTASS','UASS', 'TRICH','CHLMDA','DEMO','DIQ','HIV','ALQ', 'WHQ'), ext, sep = '_')
+  #data_names<-c('UTASS_H','UASS_H', 'TRICH_H','CHLMDA_H','DEMO_H','DIQ_H','HIV_H','ALQ_H')
+  system(paste0('mkdir /Users/spaul/Documents/Arsenic/arsenic/data/', year))
+  setwd(paste0('/Users/spaul/Documents/Arsenic/arsenic/data/',year))
+  system('rm *')
+  system(paste(paste('wget https://wwwn.cdc.gov/Nchs/Nhanes/',year,'/',data_names,'.XPT ',sep=''),collapse  = ' \ '))
+}
+```
+
+```{r results='hide', message=F, warning=F, error = F, collapse=TRUE, eval=F}
+download_data('2015-2016', 'I')
+download_data('2013-2014', 'H')
+download_data('2011-2012','G')
+download_data('2009-2010', 'F')
+download_data('2007-2008', 'E')
+download_data('2005-2006', 'D')
+
+create_result<-function(lmod){
+  lmod$coefficients
+  out<-data.frame(Coef = lmod$coefficients)
+  out$p_values = summary(lmod)$coefficients[,4]
+  out$OR = exp(coef(lmod))
+  out = cbind(out, confint(lmod))
+  return(out)
+}
+
+```
+
+
+### Prepare covariates. Note that not all the covariates are used in the analysis e.g. diabetes. The following transformations are performed. 
+
+* On 2015-2016 data HIV has four variables, HIV1, HIV2 and HIV confirmatory test. We used the confirmatory test data. 
+* BMI is calculated as (https://www.cdc.gov/healthyweight/assessing/bmi/childrens_bmi/childrens_bmi_formula.html) $$BMI = 730\times \frac{wight(lb)}{(height(in))^2}$$
+* Depending on variable values 7,8,77,99,7777,9999 are interpreted as missing
+* PIR is converted to categorical variables with break points 1.3, and 3.5
+* AGE is converted to categorical with break points 20, 40, and 65
+* BMI is converted to categorical with break points  18.5, 24.9, 29.9
+* EDU2 is used. Level 2 and 3 are merged to have the same level. 
+
+Bellow is the function to perform the above tasks on each year dataset. 
+```{r}
+library(SASxport)
+get_covar = function(year, ext){
+  setwd(paste0('/Users/spaul/Documents/Arsenic/arsenic/data/',year))
+  DEMO<-read.xport(paste0('DEMO_',ext,'.XPT'))
+  
+  names(DEMO)[grep('BORN',names(DEMO))]<-'DMDBORN'
+  DEMO$DMDBORN[DEMO$DMDBORN%in%c(7,9,77,99)]<-NA
+  DEMO$DMDBORN[DEMO$DMDBORN>1]<-2
+  DIQ<-read.xport(paste0('DIQ_',ext,'.XPT'))
+  HIV<-read.xport(paste0('HIV_',ext,'.XPT'))
+  if(year == '2015-2016') names(HIV)[5] = 'LBDHI'
+  ALQ<-read.xport(paste0('ALQ_',ext,'.XPT'))
+  WHQ = read.xport(paste0('WHQ_',ext,'.XPT'))
+  WHQ$WHD010[WHQ$WHD010%in%c(7777,9999)]<-NA
+  WHQ$WHD020[WHQ$WHD010%in%c(7777,9999)]<-NA
+  WHQ$BMI = 730*as.numeric(WHQ$WHD020) / as.numeric(WHQ$WHD010^2)
+  
+  
+  covar <- merge(DEMO[,c('SEQN','RIAGENDR','RIDAGEYR','RIDRETH1','DMDBORN','DMDYRSUS','DMDEDUC2','DMDEDUC3', 'INDFMPIR')], DIQ[,c('SEQN','DIQ010')], all.x = T)
+  covar <- merge(covar, HIV[,c('SEQN','LBDHI')], all.x = T)
+  covar <- merge(covar, ALQ[,c('SEQN','ALQ101')], all.x = T)
+  covar <- merge(covar, WHQ[,c('SEQN','BMI')], all.x = T)
+  
+  #covar$DMQADFC[covar$DMQADFC%in%c(7)]<-NA
+  #covar$DMDBORN[covar$DMDBORN4==99]<-NA
+  covar$DMDYRSUS[covar$DMDYRSUS%in%c(77,99)]<-NA
+  covar$DMDEDUC2[covar$DMDEDUC2%in%c(7,9)]<-NA
+  covar$DMDEDUC3[covar$DMDEDUC3%in%c(99)]<-NA
+  #covar$INDHHIN2[covar$INDHHIN2S%in%c(77,99)]<-NA
+  covar$DIQ010[covar$DIQ010%in%c(9)]<-NA
+  covar$ALQ101[covar$ALQ101%in%c(9)]<-NA
+  covar$YEAR = rep(year,nrow(covar))
+  
+  covar$SEQN <- as.integer(covar$SEQN)
+  covar$LBDHI[covar$LBDHI==3]<-NA
+  covar$LBDHI <- as.factor(covar$LBDHI)
+  covar$RIAGENDR<-as.factor(covar$RIAGENDR)
+  covar$DMDBORN<-as.factor(covar$DMDBORN)
+  covar$DMDYRSUS <- as.numeric(covar$DMDYRSUS)
+  
+  covar$INDFMPIR = cut(covar$INDFMPIR, breaks = c(0,1.3, 3.5,Inf), labels = c(1,2,3))
+  covar$RIDAGEYR = cut(covar$RIDAGEYR, breaks = c(0, 20, 40, 65, Inf), labels = c(1,2,3,4))
+  covar$RIDRETH1 = as.factor(covar$RIDRETH1)
+  levels(covar$RIDRETH1) <- c("1","1","2","3","4")
+  
+  covar$BMI = cut(covar$BMI, breaks = c(0,18.5, 24.9, 29.9, Inf), labels = c(1,2,3,4))
+  covar$DMDEDUC2 <- as.factor(covar$DMDEDUC2)
+  levels(covar$DMDEDUC2)<-c("1","2","2","3","4")
+  covar$DMDEDUC3<-as.factor(covar$DMDEDUC3)
+  covar$DIQ010 <- as.factor(covar$DIQ010)
+  covar$ALQ101 <- as.factor(covar$ALQ101)
+  return(covar)
+}
+```
+
+### Collect covariates and combine them together
+
+```{r}
+covar = list()
+covar$Y2015 = get_covar('2015-2016','I')
+covar$Y2013 = get_covar('2013-2014','H')
+covar$Y2011 = get_covar('2011-2012','G')
+covar$Y2009 = get_covar('2009-2010','F')
+covar$Y2007 = get_covar('2007-2008','E')
+covar$Y2005 = get_covar('2005-2006','D')
+covar$ALL = rbind(covar$Y2015, covar$Y2013, covar$Y2011, covar$Y2009, covar$Y2007, covar$Y2005)
+```
+
+#### Class of the covariates
+```{r}
+sapply(covar$ALL, class)
+```
+
+#### Summary Statistics of the covariates
+```{r}
+get_summary = function(x){
+  if(class(x)=='numeric') return(summary(x))
+  if(class(x)=='integer'){
+    if(length(unique(x))<=17){
+      return(table(x, useNA = 'ifany'))
+    }else{
+      return(summary(x))
+    }
+  }
+  if(class(x)=='factor') return(table(x, useNA = 'ifany'))
+}
+
+sapply(covar$ALL, get_summary)
+```
+
+### Prepare the arsenic data
+We used both the total and speciated arsenic from the special subsample (if available). special subsample were available from 2011. TUC1 and TUC2 are created as 
+
+TUC1 = Arsenous + Arsenic + Dimethylarsinic + Monomethylacrsonic 
+TUC2 = TOTAL - Arsenobetaine - Arsenocholine
+
+```{r message=F, warning=F}
+year = '2013-2014'
+ext = "H"
+get_arsenic_data = function(year, ext){
+  setwd(paste0('/Users/spaul/Documents/Arsenic/arsenic/data/',year))
+  if(file.exists(paste0('UTASS_',ext,'.XPT'))){
+    total<-read.xport(paste0('UTASS_',ext,'.XPT'))
+    esp<-read.xport(paste0('UASS_',ext,'.XPT'))
+    arsenic = merge(total, esp[, names(esp)!="WTFSM"])
+  }else if (file.exists(paste0('UASS_',ext,'.XPT'))){
+    arsenic<-read.xport(paste0('UASS_',ext,'.XPT'))
+  }else{
+    arsenic<-read.xport(paste0('UAS_',ext,'.XPT'))
+  }
+
+    arsenic = arsenic[,- grep('LC',names(arsenic))]
+    #if('URDUMMAL'%in%names(arsenic)) arsenic = subset(arsenic, select = -URDUMMAL)
+    #if('URXUCR'%in%names(arsenic)) arsenic = subset(arsenic, select = -URXUCR)
+    #if('URXUCR'%in%names(arsenic)) arsenic = subset(arsenic, select = -URXUCR)
+    names(arsenic)[names(arsenic)=='WTSA2YR'] = 'WTFSM'
+    arsenic = arsenic[,c("SEQN","WTFSM","URXUAS","URXUAS3","URXUAS5","URXUAB","URXUAC","URXUDMA","URXUMMA")]
+    arsenic$TUC1 = arsenic$URXUAS3 + arsenic$URXUAS5 + arsenic$URXUMMA + arsenic$URXUDMA
+    arsenic$TUC2 = arsenic$URXUAS - arsenic$URXUAB - arsenic$URXUAC
+    arsenic$YEAR = rep(year, nrow(arsenic))
+    
+  return(arsenic)
+}
+
+arsenic<-list()
+arsenic$Y2015 = get_arsenic_data('2015-2016', 'I')
+arsenic$Y2013 = get_arsenic_data('2013-2014', 'H')
+arsenic$Y2011 = get_arsenic_data('2011-2012', 'G')
+arsenic$Y2009 = get_arsenic_data('2009-2010', 'F')
+arsenic$Y2007 = get_arsenic_data('2007-2008', 'E')
+arsenic$Y2005 = get_arsenic_data('2005-2006', 'D')
+arsenic$ALL = rbind(arsenic$Y2015, arsenic$Y2013, arsenic$Y2011 , arsenic$Y2009, arsenic$Y2007, arsenic$Y2005)
+```
+
+## Prepare Dependent variables
+
+```{r, message=F, warning=F}
+get_chlmda_data= function(year, ext){
+  setwd(paste0('/Users/spaul/Documents/Arsenic/arsenic/data/',year))
+  chlmda = read.xport(paste0('CHLMDA_',ext,'.XPT'))
+  chlmda = chlmda[,c("SEQN", "URXUCL")]
+  chlmda$URXUCL = as.factor(chlmda$URXUCL - 1 )
+  return(chlmda)
+}
+
+chlmda<-list()
+chlmda$Y2015 = get_chlmda_data('2015-2016', 'I')
+chlmda$Y2013 = get_chlmda_data('2013-2014', 'H')
+chlmda$Y2011 = get_chlmda_data('2011-2012', 'G')
+chlmda$Y2009 = get_chlmda_data('2009-2010', 'F')
+chlmda$Y2007 = get_chlmda_data('2007-2008', 'E')
+chlmda$Y2005 = get_chlmda_data('2005-2006', 'D')
+chlmda$ALL = rbind(chlmda$Y2015, chlmda$Y2013, chlmda$Y2011 , chlmda$Y2009, chlmda$Y2007, chlmda$Y2005)
+```
+
+## Prepare regression data
+
+```{r}
+reg_data = merge(chlmda$ALL, arsenic$ALL)
+reg_data = merge(reg_data, covar$ALL)
+```
+# Analysis on Chlamydia
+## Speciated arsenic model
+
+```{r, results='asis'}
+library(xtable)
+lmod_esp = glm(URXUCL ~ WTFSM + URXUAS3 + URXUAS5 + URXUAB + URXUAC + URXUDMA + URXUMMA + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBORN   + DMDEDUC2 + INDFMPIR  + ALQ101 + BMI , data = reg_data, family = binomial())
+print(xtable(summary(lmod_esp), align = "lcccc"), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+#### Results with OR and 95% confidence interval
+
+```{r, results='asis', message=F, warning=F}
+print(xtable(create_result(lmod_esp), align = 'lccccc'), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+## Total arsenic model
+
+```{r, results='asis'}
+lmod_total = glm(URXUCL ~ WTFSM + URXUAS + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBORN   + DMDEDUC2 + INDFMPIR  + ALQ101 + BMI , data = reg_data, family = binomial())
+print(xtable(summary(lmod_total), align = "lcccc"), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+
+```
+
+
+#### Results with OR and 95% confidence interval
+
+```{r, results='asis', message=F}
+print(xtable(create_result(lmod_total), align = 'lccccc'), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+## TUC1 model 
+
+```{r, results='asis'}
+lmod_tuc1 = glm(URXUCL ~ WTFSM + TUC1 + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBORN   + DMDEDUC2 + INDFMPIR  + ALQ101 + BMI , data = reg_data, family = binomial())
+print(xtable(summary(lmod_tuc1), align = "lcccc"), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+#### Results with OR and 95% confidence interval
+
+```{r, results='asis', message=F}
+print(xtable(create_result(lmod_tuc1), align = 'lccccc'), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+
+## TUC2 model 
+
+```{r, results='asis'}
+lmod_tuc2 = glm(URXUCL ~ WTFSM + TUC2 + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBORN   + DMDEDUC2 + INDFMPIR  + ALQ101 + BMI , data = reg_data, family = binomial())
+print(xtable(summary(lmod_tuc2), align = "lcccc"), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+#### Results with OR and 95% confidence interval
+
+```{r, results='asis', message=F}
+print(xtable(create_result(lmod_tuc2), align = 'lccccc'), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+
+## Prepare Dependent variables
+
+```{r, message=F, warning=F}
+get_trich_data= function(year, ext){
+  setwd(paste0('/Users/spaul/Documents/Arsenic/arsenic/data/',year))
+  trich = read.xport(paste0('TRICH_',ext,'.XPT'))
+  trich = trich[,c("SEQN", "URXUTRI")]
+  trich$URXUTRI = as.factor(trich$URXUTRI - 1 )
+  return(trich)
+}
+
+trich<-list()
+trich$Y2015 = get_trich_data('2015-2016', 'I')
+trich$Y2013 = get_trich_data('2013-2014', 'H')
+trich$ALL = rbind(trich$Y2015, trich$Y2013)
+```
+
+
+
+```{r}
+reg_data = merge(trich$ALL, arsenic$ALL)
+reg_data = merge(reg_data, covar$ALL)
+```
+
+# Analysis on Trichomonas
+## Speciated arsenic model
+
+```{r, results='asis'}
+lmod_esp = glm(URXUTRI ~ WTFSM + URXUAS3 + URXUAS5 + URXUAB + URXUAC + URXUDMA + URXUMMA + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBORN   + DMDEDUC2 + INDFMPIR  + ALQ101 + BMI , data = reg_data, family = binomial())
+print(xtable(summary(lmod_esp), align = "lcccc"), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+#### Results with OR and 95% confidence interval
+
+```{r, results='asis', message=F, warning=F}
+print(xtable(create_result(lmod_esp), align = 'lccccc'), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+## Total arsenic model
+
+```{r, results='asis'}
+lmod_total = glm(URXUTRI ~ WTFSM + URXUAS + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBORN   + DMDEDUC2 + INDFMPIR  + ALQ101 + BMI , data = reg_data, family = binomial())
+print(xtable(summary(lmod_total), align = "lcccc"), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+#### Results with OR and 95% confidence interval
+
+```{r, results='asis', message=F, warning=F}
+print(xtable(create_result(lmod_total), align = 'lccccc'), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+
+
+## TUC1 model 
+
+```{r, results='asis'}
+lmod_tuc1 = glm(URXUTRI ~ WTFSM + TUC1 + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBORN   + DMDEDUC2 + INDFMPIR  + ALQ101 + BMI , data = reg_data, family = binomial())
+print(xtable(summary(lmod_tuc1), align = "lcccc"), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+#### Results with OR and 95% confidence interval
+
+```{r, results='asis', message=F, warning=F}
+print(xtable(create_result(lmod_tuc1), align = 'lccccc'), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+## TUC2 model 
+
+```{r, results='asis'}
+lmod_tuc2 = glm(URXUTRI ~ WTFSM + TUC2 + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBORN   + DMDEDUC2 + INDFMPIR  + ALQ101 + BMI , data = reg_data, family = binomial())
+print(xtable(summary(lmod_tuc2), align = "lcccc"), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+#### Results with OR and 95% confidence interval
+
+```{r, results='asis', message=F}
+print(xtable(create_result(lmod_tuc2), align = 'lccccc'), type = 'html', 
+      html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
+```
+
+

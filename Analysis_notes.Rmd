@@ -1,0 +1,176 @@
+---
+title: "Association of Arsenic with Chlamydia and Trichomonas"
+output: html_notebook
+---
+
+### Research Questions
+
+* Exposure to Speciated arsenic and risk of Chlamydia in US  Population
+* Exposure to Speciated Arsenic and risk of Trichomonas infection in US Population
+
+### Response Variables
+
+* URXUCL - Chlamydia, Urine (44 +ve and 2025 -ve)
+* URXUTRI - Trichomonas, Urine (92 +ve and 3742 -ve)
+
+### Arsenic Level
+* URXUAS3: Urinary Arsenous Acid. Lower Limit: 0.12
+* URXUAS5: Urinary Arsenic acid. Lower Limit: 0.79
+* URXUAB: Urinary Arsenobetaine. Lower Limit: 1.16
+* URXUAC: Urinary Arsenocholine. Lower Limit: 0.11
+* URXUDMA: Urinary Dimethylarsinic Acid. Lower Limit: 1.91
+* URXUMMA: Urinary Monomethylarsonic Acid. Lower Limit: 0.20
+
+
+
+### Demographic
+
+* RIAGENDR: Gender
+* RIDAGEYR - Age in years at screening
+* RIDRETH1 - Race/Hispanic origin
+* RIDRETH3 - Race/Hispanic origin w/ NH Asian
+* DMQADFC - Served in a foreign country
+* DMDBORN4 - Country of birth
+* DMDYRSUS - Length of time in US
+* DMDEDUC2 - Education level - Adults 20+
+* DMDEDUC3 - Education level - Children/Youth 6-19 (We would need information if there are some individuals of age 18-19)
+* INDHHIN2 - Annual household income
+* INDFMPIR - Ratio of family income to poverty (Would be more important than the household income. This variable has more missingness than household income since it was not calculated if the reported family income was low (<20K or >=20K). Values above 5 were coded as 5.)
+
+### Other Covariates
+* WTFSM: Two year smoking weights
+* DIQ010 - Doctor told you have diabetes
+* LBXHIVC - HIV-1, 2 Combo Test
+* ALQ101 - Had at least 12 alcohol drinks/1 yr?
+
+
+
+
+```{r}
+covar = read.csv('./data/covariates.csv')
+names(covar)
+dim(covar)
+#covar$RIAGENDR <- as.factor(covar$RIAGENDR)
+#covar$RIDRETH3 <- as.factor(covar$RIDRETH3, labels = c('Mexican American', 'Other Hispanic', 'NH White', 'NH Black', 'NH Asian', 'Other'))
+
+#covar$DMDBORN4 <- as.factor(covar$DMDBORN4)
+#covar$DIQ010 <- as.factor(covar$DIQ010)
+#covar$ALQ101 <- as.factor(covar$ALQ101)
+#covar$LBXHIVC <- as.factor(covar$LBXHIVC)
+#covar$DMDEDUC2 <- as.factor(covar$DMDEDUC2)
+edu3_convert = rep(NA, nrow(covar))
+edu3_convert[(covar$DMDEDUC3<9) & (covar$DMDEDUC3>=0)] <- 1
+edu3_convert[covar$DMDEDUC3==66] <- 1
+edu3_convert[(covar$DMDEDUC3>=9) & (covar$DMDEDUC3<=12)]<-2
+edu3_convert[(covar$DMDEDUC3>=13) & (covar$DMDEDUC3<=14)]<-3
+
+covar$DMDEDUC2[is.na(covar$DMDEDUC2)]<-edu3_convert[is.na(covar$DMDEDUC2)]
+
+covar$DMDBORN4[covar$DMDBORN4==99]<-NA
+covar$DMDYRSUS[covar$DMDYRSUS%in%c(77,99)]<-NA
+covar$DMDEDUC2[covar$DMDEDUC2==9]<-NA
+covar$INDHHIN2[covar$INDHHIN2%in%c(77,99)]<-NA
+```
+
+### Descriptive statistics 
+
+```{r}
+get_summary = function(x){
+  if(class(x)=='numeric') return(summary(x))
+  if(class(x)=='integer'){
+    if(length(unique(x))<=17){
+      return(table(x, useNA = 'ifany'))
+    }else{
+      return(summary(x))
+    }
+  }
+  if(class(x)=='factor') return(table(x, useNA = 'ifany'))
+}
+sapply(covar, class)
+sapply(covar, get_summary)
+```
+
+* DMQADFC: Served in a foreign country: High missing values
+* EDU3 is imported to EDU2 
+* DMDYRSUS - Lentgh of time in US, HIV, and ALQ also have high missing values but we will keep it for now
+* INDFMPIR - ratio of family informe to poverty has higher missingess than income. Keeping both of the two variabes is redundant. We will keep the income and remove it. 
+* For ethnicity we will consider RIDRETH3 that include Asian and remove RIDRETH1
+
+```{r}
+covar = covar[, -which(names(covar)%in%c('DMQADFC', 'RIDRETH1', 'DMDEDUC3', 'INDFMPIR'))]
+```
+
+
+## Prepare Arsenic data 
+
+```{r}
+total = read.csv('./data/UTASS.csv')
+esp = read.csv('./data/UASS.csv')
+total = read.xport('./data/UTAS_I.XPT')
+esp = read.xport('./data/UAS_I.XPT')
+esp = esp[,- grep('LC',names(esp))]
+esp = subset(esp, select = -URDUMMAL)
+head(total)
+dim(total)
+head(esp)
+dim(esp)
+arsenic = merge(total, esp)
+head(arsenic)
+dim(arsenic)
+```
+
+```{r}
+tuc1 = data.frame(SEQN = arsenic$SEQN, WTFSM = arsenic$WTSA2YR, TUC1 = arsenic$URXUAS3 + arsenic$URXUAS5 + arsenic$URXUMMA + arsenic$URXUDMA)
+tuc2 = data.frame(SEQN = arsenic$SEQN, WTFSM = arsenic$WTSA2YR, TUC2 = arsenic$URXUAS - arsenic$URXUAB - arsenic$URXUAC)
+```
+## Prepare Dependent variables
+
+```{r}
+chlmda = read.csv('./data/CHLMDA.csv')
+names(chlmda)
+dim(chlmda)
+table(chlmda$URXUCL, useNA = 'ifany')
+```
+
+
+# Analysis on Chlamydia
+
+```{r}
+library(xtable)
+reg_dat = merge(chlmda, covar, by = 'SEQN')
+reg_dat_tuc1 = merge(reg_dat, tuc1)
+reg_dat_tuc1 = reg_dat_tuc1[, -which(names(reg_dat_tuc1)%in%c('SEQN','LBXHIVC'))]
+#reg_dat_tuc1$RIDRETH3<-as.factor(reg_dat_tuc1$RIDRETH3)
+#reg_dat_tuc1$DMDBORN4<-as.factor(reg_dat_tuc1$DMDBORN4)
+#reg_dat_tuc1$DMDYRSUS<-as.factor(reg_dat_tuc1$DMDYRSUS)
+#reg_dat_tuc1$DMDEDUC2<-as.factor(reg_dat_tuc1$DMDEDUC2)
+#reg_dat_tuc1$INDHHIN2<-as.factor(reg_dat_tuc1$INDHHIN2)
+#reg_dat_tuc1$DIQ010<-as.factor(reg_dat_tuc1$DIQ010)
+#reg_dat_tuc1$ALQ101<-as.factor(reg_dat_tuc1$ALQ101)
+#reg_dat_tuc1<-reg_dat_tuc1[!is.na(reg_dat_tuc1$URXUCL),]
+summary(glm(URXUCL-1 ~ WTFSM + TUC1, data = reg_dat_tuc1, family = 'binomial'))
+```
+
+```{r}
+summary(lm(TUC1 ~ WTFSM + as.factor(RIDRETH3) +as.factor(ALQ101)+as.factor(DIQ010)+as.factor(DMDEDUC2)+as.factor(URXUCL), data = reg_dat_tuc1))
+```
+
+```{r}
+reg_dat = merge(chlmda, covar, by = 'SEQN')
+reg_dat_tuc2 = merge(reg_dat, tuc2)
+reg_dat_tuc2 = reg_dat_tuc2[, -which(names(reg_dat_tuc2)%in%c('SEQN','LBXHIVC'))]
+#reg_dat_tuc1$RIDRETH3<-as.factor(reg_dat_tuc1$RIDRETH3)
+#reg_dat_tuc1$DMDBORN4<-as.factor(reg_dat_tuc1$DMDBORN4)
+#reg_dat_tuc1$DMDYRSUS<-as.factor(reg_dat_tuc1$DMDYRSUS)
+#reg_dat_tuc1$DMDEDUC2<-as.factor(reg_dat_tuc1$DMDEDUC2)
+#reg_dat_tuc1$INDHHIN2<-as.factor(reg_dat_tuc1$INDHHIN2)
+#reg_dat_tuc1$DIQ010<-as.factor(reg_dat_tuc1$DIQ010)
+#reg_dat_tuc1$ALQ101<-as.factor(reg_dat_tuc1$ALQ101)
+#reg_dat_tuc1<-reg_dat_tuc1[!is.na(reg_dat_tuc1$URXUCL),]
+summary(glm(URXUCL-1 ~ WTFSM + TUC2, data = reg_dat_tuc2, family = 'binomial'))
+```
+```{r}
+summary(lm(TUC2 ~ WTFSM + as.factor(RIDRETH3) +as.factor(ALQ101)+as.factor(DIQ010)+as.factor(DMDEDUC2)+as.factor(URXUCL), data = reg_dat_tuc2))
+```
+
+
