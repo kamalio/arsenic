@@ -15,6 +15,8 @@ download_data = function(year, ext){
   system('rm *')
   system(paste(paste('wget https://wwwn.cdc.gov/Nchs/Nhanes/',year,'/',data_names,'.XPT ',sep=''),collapse  = ' \ '))
 }
+
+
 ```
 
 ```{r results='hide', message=F, warning=F, error = F, collapse=TRUE, eval=F}
@@ -25,6 +27,10 @@ download_data('2009-2010', 'F')
 download_data('2007-2008', 'E')
 download_data('2005-2006', 'D')
 
+```
+
+
+```{r}
 create_result<-function(lmod){
   lmod$coefficients
   out<-data.frame(Coef = lmod$coefficients)
@@ -33,7 +39,6 @@ create_result<-function(lmod){
   out = cbind(out, confint(lmod))
   return(out)
 }
-
 ```
 
 
@@ -347,7 +352,7 @@ print(xtable(create_result(lmod_tuc1), align = 'lccccc'), type = 'html',
 
 ## TUC2 model 
 
-```{r, results='asis'}
+```{r, results='asis', message=F, warning=F}
 lmod_tuc2 = glm(URXUTRI ~ WTFSM + TUC2 + RIAGENDR + RIDAGEYR + RIDRETH1 + DMDBORN   + DMDEDUC2 + INDFMPIR  + ALQ101 + BMI , data = reg_data, family = binomial())
 print(xtable(summary(lmod_tuc2), align = "lcccc"), type = 'html', 
       html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
@@ -355,7 +360,7 @@ print(xtable(summary(lmod_tuc2), align = "lcccc"), type = 'html',
 
 #### Results with OR and 95% confidence interval
 
-```{r, results='asis', message=F}
+```{r, results='asis', message=F, warning=F}
 print(xtable(create_result(lmod_tuc2), align = 'lccccc'), type = 'html', 
       html.table.attributes = 'align="center", rules = "rows", width = 50%, frame="below"')
 ```
